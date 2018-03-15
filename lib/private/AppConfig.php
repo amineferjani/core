@@ -150,7 +150,14 @@ class AppConfig implements IAppConfig {
 	 * @return bool True if the value was inserted or updated, false if the value was the same
 	 */
 	public function setValue($app, $key, $value) {
-		return $this->emittingCall(function () use (&$app, &$key, &$value) {
+		/*
+		 * $update is the flag which helps the event subscriber understand
+		 * if it an insert or update
+		 */
+
+		$update = false;
+		$oldValue = null;
+		return $this->emittingCall(function () use (&$app, &$key, &$value, &$update, &$oldValue) {
 			if (!$this->hasKey($app, $key)) {
 				$inserted = (bool) $this->conn->insertIfNotExist('*PREFIX*appconfig', [
 					'appid' => $app,
@@ -193,12 +200,18 @@ class AppConfig implements IAppConfig {
 
 			$changedRow = (bool) $sql->execute();
 
+			if (isset($this->cache[$app][$key])) {
+				$oldValue = $this->cache[$app][$key];
+			}
+
 			$this->cache[$app][$key] = $value;
+
+			$update = true;
 
 			return $changedRow;
 		},[
-			'before' => ['key' => $key, 'value' => $value, 'app' => $app, 'appcache' => isset($this->cache[$app]) ? $this->cache[$app] : null],
-			'after' => ['key' => $key, 'value' => $value, 'app' => $app, 'appcache' => isset($this->cache[$app]) ? $this->cache[$app] : null]
+			'before' => ['key' => $key, 'value' => $value, 'app' => $app],
+			'after' => ['key' => $key, 'value' => $value, 'app' => $app, 'update' => &$update, 'oldvalue' => &$oldValue]
 		], 'appconfig', 'setvalue');
 	}
 
